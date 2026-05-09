@@ -214,8 +214,34 @@ def solve_hybrid(parser, a, b, tol, max_iter=100):
     fb = parser.f(b)
     if fa is None or fb is None:
         return None, "Cannot evaluate function at bounds.", []
-    if fa * fb > 0:
-        return None, "f(a) and f(b) must have opposite signs for Hybrid method.", []
+    
+    # GRACEFUL FALLBACK: If bracket is invalid, use pure Newton-Raphson instead
+    bracket_invalid = (fa * fb >= 0) or (abs(b - a) < 1e-12)
+    
+    if bracket_invalid:
+        # Fallback to Newton-Raphson starting from midpoint
+        x0 = (a + b) / 2.0
+        fallback_note = "⚠️ Invalid bracket detected. Hybrid falling back to pure Newton-Raphson mode."
+        
+        # Run Newton-Raphson
+        nr_root, nr_error, nr_history = solve_newton_raphson(parser, x0, tol, max_iter)
+        
+        # Add a note to the first iteration explaining the fallback
+        if nr_history:
+            nr_history[0]["Decision logic"] = fallback_note
+            # Rename columns to match hybrid format
+            for row in nr_history:
+                if "xₙ" in row:
+                    row["xₙ (estimate)"] = row.pop("xₙ")
+                if "f(xₙ)" in row:
+                    row["f(xₙ)"] = row["f(xₙ)"]
+                if "|xₙ₊₁ - xₙ|" in row:
+                    row["|f(xₙ)| error"] = row.pop("|xₙ₊₁ - xₙ|")
+                row["Method used"] = "Newton-Raphson (fallback)"
+                if "Decision logic" not in row:
+                    row["Decision logic"] = "Pure Newton — no bracket available"
+        
+        return nr_root, nr_error, nr_history
 
     history = []
     curr_a, curr_b = float(a), float(b)
